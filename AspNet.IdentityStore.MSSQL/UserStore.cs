@@ -115,11 +115,15 @@ namespace AspNet.IdentityStore
 
             return Task.Run(() =>
             {
-                using (var ctx = _context.Open())
-                    return ctx.Connection.Query(
+                using (var ctx = _context.BeginTransaction())
+                {
+                    ctx.Connection.Execute(
                         sql: @"DELETE FROM [dbo].[AspNetUserClaims] WHERE [Id] IN @Ids",
                         param: new { Ids = list.Select(i => i.Id).ToArray() },
                         transaction: ctx.Transaction);
+
+                    ctx.Commit();
+                }
             });
         }
 
