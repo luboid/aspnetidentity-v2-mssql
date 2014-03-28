@@ -621,8 +621,8 @@ namespace AspNet.IdentityStore
                 {
                     using (var ctx = _context.Open())
                     {
-                        var id = ctx.Connection.Query<string>(sql: @"SELECT [Id] FROM [dbo].[AspNetUsers] WHERE [Email] = @email",
-                            param: new { email = email.ToLower() },
+                        var id = ctx.Connection.Query<string>(sql: @"SELECT [Id] FROM [dbo].[AspNetUsers] WHERE [Email] = LOWER(@email)",
+                            param: new { email },
                             transaction: ctx.Transaction).SingleOrDefault();
 
                         return GetIdentityUserAsync(ctx, id);
@@ -643,8 +643,8 @@ namespace AspNet.IdentityStore
                 {
                     using (var ctx = _context.Open())
                     {
-                        var id = ctx.Connection.Query<string>(sql: @"SELECT [Id] FROM [dbo].[AspNetUsers] WHERE [UserName] = @userName",
-                            param: new { userName = userName.ToLower() },
+                        var id = ctx.Connection.Query<string>(sql: @"SELECT [Id] FROM [dbo].[AspNetUsers] WHERE [UserName] = LOWER(@userName)",
+                            param: new { userName },
                             transaction: ctx.Transaction).SingleOrDefault();
 
                         return GetIdentityUserAsync(ctx, id);
