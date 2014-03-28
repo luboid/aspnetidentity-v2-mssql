@@ -40,6 +40,21 @@ namespace AspNet.IdentityStore
 			get;
 			set;
 		}
+        public DateTime? LockoutEndDateUtc
+        {
+            get;
+            set;
+        }
+        public bool LockoutEnabled
+        {
+            get;
+            set;
+        }
+        public int AccessFailedCount
+        {
+            get;
+            set;
+        }
         public ICollection<IdentityUserRole> Roles
 		{
 			get;

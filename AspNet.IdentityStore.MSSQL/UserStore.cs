@@ -22,6 +22,7 @@ namespace AspNet.IdentityStore
         IUserEmailStore<IdentityUser, string>,
         IUserPhoneNumberStore<IdentityUser, string>,
         IUserTwoFactorStore<IdentityUser, string>,
+        IUserLockoutStore<IdentityUser, string>, 
         IUserStore<IdentityUser, string>,
         IUserStore<IdentityUser>,
         IDisposable
@@ -57,6 +58,77 @@ namespace AspNet.IdentityStore
             }
             _context = context;
             //AutoSaveChanges = true;
+        }
+
+        public Task<DateTimeOffset> GetLockoutEndDateAsync(IdentityUser user)
+        {
+            this.ThrowIfDisposed();
+            if (user == null)
+            {
+                throw new ArgumentNullException("user");
+            }
+            return Task.FromResult<DateTimeOffset>(user.LockoutEndDateUtc.HasValue ? new DateTimeOffset(DateTime.SpecifyKind(user.LockoutEndDateUtc.Value, DateTimeKind.Utc)) : default(DateTimeOffset));
+        }
+        public Task SetLockoutEndDateAsync(IdentityUser user, DateTimeOffset lockoutEnd)
+        {
+            this.ThrowIfDisposed();
+            if (user == null)
+            {
+                throw new ArgumentNullException("user");
+            }
+            user.LockoutEndDateUtc = ((lockoutEnd == DateTimeOffset.MinValue) ? null : new DateTime?(lockoutEnd.UtcDateTime));
+            return Task.FromResult<int>(0);
+        }
+        public Task<int> IncrementAccessFailedCountAsync(IdentityUser user)
+        {
+            this.ThrowIfDisposed();
+            if (user == null)
+            {
+                throw new ArgumentNullException("user");
+            }
+            user.AccessFailedCount++;
+            return Task.FromResult<int>(user.AccessFailedCount);
+        }
+        public Task ResetAccessFailedCountAsync(IdentityUser user)
+        {
+            this.ThrowIfDisposed();
+            if (user == null)
+            {
+                throw new ArgumentNullException("user");
+            }
+            user.AccessFailedCount = 0;
+            return Task.FromResult<int>(0);
+        }
+
+        public Task<int> GetAccessFailedCountAsync(IdentityUser user)
+        {
+            this.ThrowIfDisposed();
+            if (user == null)
+            {
+                throw new ArgumentNullException("user");
+            }
+            return Task.FromResult<int>(user.AccessFailedCount);
+        }
+
+        public Task<bool> GetLockoutEnabledAsync(IdentityUser user)
+        {
+            this.ThrowIfDisposed();
+            if (user == null)
+            {
+                throw new ArgumentNullException("user");
+            }
+            return Task.FromResult<bool>(user.LockoutEnabled);
+        }
+
+        public Task SetLockoutEnabledAsync(IdentityUser user, bool enabled)
+        {
+            this.ThrowIfDisposed();
+            if (user == null)
+            {
+                throw new ArgumentNullException("user");
+            }
+            user.LockoutEnabled = enabled;
+            return Task.FromResult<int>(0);
         }
 
         public virtual Task<IList<Claim>> GetClaimsAsync(IdentityUser user)
@@ -607,6 +679,9 @@ SELECT [Id]
       ,[PhoneNumber]
       ,[PhoneNumberConfirmed]
       ,[TwoFactorEnabled]
+      ,[LockoutEndDateUtc]
+      ,[LockoutEnabled]
+      ,[AccessFailedCount]
       ,[UserName]
   FROM [dbo].[AspNetUsers]
  WHERE [ID] = @ID
@@ -678,14 +753,17 @@ SELECT [Id]
 
             bool insert = false;
             int update = ctx.Connection.Execute(sql: @"UPDATE [dbo].[AspNetUsers]
-   SET [Email] = lower(@Email)
+   SET [Email] = LOWER(@Email)
       ,[EmailConfirmed] = @EmailConfirmed
       ,[PasswordHash] = @PasswordHash
       ,[SecurityStamp] = @SecurityStamp
       ,[PhoneNumber] = @PhoneNumber
       ,[PhoneNumberConfirmed] = @PhoneNumberConfirmed
       ,[TwoFactorEnabled] = @TwoFactorEnabled
-      ,[UserName] = lower(@UserName)
+      ,[LockoutEndDateUtc] = @LockoutEndDateUtc
+      ,[LockoutEnabled] = @LockoutEnabled
+      ,[AccessFailedCount] = @AccessFailedCount
+      ,[UserName] = LOWER(@UserName)
  WHERE [Id] = @Id", param: user, transaction: ctx.Transaction);
             if (0 == update)
             {
@@ -699,17 +777,23 @@ SELECT [Id]
            ,[PhoneNumber]
            ,[PhoneNumberConfirmed]
            ,[TwoFactorEnabled]
+           ,[LockoutEndDateUtc]
+           ,[LockoutEnabled]
+           ,[AccessFailedCount]
            ,[UserName])
      VALUES
            (@Id
-           ,lower(@Email)
+           ,LOWER(@Email)
            ,@EmailConfirmed
            ,@PasswordHash
            ,@SecurityStamp
            ,@PhoneNumber
            ,@PhoneNumberConfirmed
            ,@TwoFactorEnabled
-           ,lower(@UserName))", param: user, transaction: ctx.Transaction);
+           ,@LockoutEndDateUtc
+           ,@LockoutEnabled
+           ,@AccessFailedCount
+           ,LOWER(@UserName))", param: user, transaction: ctx.Transaction);
             }
             return insert;
         }
