@@ -13,6 +13,7 @@ using System.Diagnostics;
 using System.Net.Mail;
 using System.Net.Configuration;
 using System.Web.Configuration;
+using System.Web.Mvc;
 
 namespace IdentitySample.Models
 {
@@ -27,7 +28,9 @@ namespace IdentitySample.Models
 
         public static ApplicationUserManager Create(IdentityFactoryOptions<ApplicationUserManager> options, IOwinContext context)
         {
-            var manager = new ApplicationUserManager(new UserStore(new DbContext()) { DisposeContext = true });
+            
+            //var manager = new ApplicationUserManager(new UserStore(new DbContext()) { DisposeContext = true });
+            var manager = DependencyResolver.Current.GetService<ApplicationUserManager>();
             // Configure validation logic for usernames
             manager.UserValidator = new UserValidator<IdentityUser>(manager)
             {
@@ -134,8 +137,8 @@ namespace IdentitySample.Models
         public static ApplicationRoleManager Create(IdentityFactoryOptions<ApplicationRoleManager> options, IOwinContext context)
         {
             //var manager = new ApplicationRoleManager(new RoleStore<IdentityRole>(context.Get<ApplicationDbContext>()));
-            var manager = new ApplicationRoleManager(new RoleStore(new DbContext()) { DisposeContext = true });
-
+            //var manager = new ApplicationRoleManager(new RoleStore(new DbContext()) { DisposeContext = true });
+            var manager = DependencyResolver.Current.GetService<ApplicationRoleManager>();
             return manager;
         }
     }
