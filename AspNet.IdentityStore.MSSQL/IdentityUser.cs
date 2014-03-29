@@ -55,21 +55,6 @@ namespace AspNet.IdentityStore
             get;
             set;
         }
-        public ICollection<IdentityUserRole> Roles
-		{
-			get;
-			private set;
-		}
-        public ICollection<IdentityUserClaim> Claims
-		{
-			get;
-			private set;
-		}
-        public ICollection<IdentityUserLogin> Logins
-		{
-			get;
-			private set;
-		}
         public string Id
 		{
 			get;
@@ -80,10 +65,7 @@ namespace AspNet.IdentityStore
 			get;
 			set;
 		}
-		public IdentityUser()
-		{
-            this.Claims = new List<IdentityUserClaim>();
-            this.Roles = new List<IdentityUserRole>();
-            this.Logins = new List<IdentityUserLogin>();
-		}
+
+        public IdentityUser()
+		{ }
 	}}

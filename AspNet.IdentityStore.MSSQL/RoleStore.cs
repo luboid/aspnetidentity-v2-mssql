@@ -11,7 +11,7 @@ namespace AspNet.IdentityStore
     public class RoleStore : IRoleStore<IdentityRole, string>, IDisposable /*IQueryableRoleStore<IdentityRole, Guid>,*/
 	{
 		bool _disposed;
-        IDbContext _context;
+        IDbContext _dbContext;
 
         public bool DisposeContext
 		{
@@ -27,13 +27,13 @@ namespace AspNet.IdentityStore
 			}
 		}*/
 
-        public RoleStore(IDbContext context)
+        public RoleStore(IDbContext dbContext)
 		{
-			if (context == null)
+			if (dbContext == null)
 			{
 				throw new ArgumentNullException("context");
 			}
-            _context = context;
+            _dbContext = dbContext;
 		}
 
         public Task<IdentityRole> FindByIdAsync(string roleId)
@@ -43,10 +43,7 @@ namespace AspNet.IdentityStore
             {
                 return Task.Run(() =>
                 {
-                    using (var ctx = _context.Open())
-                        return ctx.Connection.Query<IdentityRole>("SELECT * FROM [dbo].[AspNetRoles] WHERE [Id] = @roleId",
-                            param: new { roleId },
-                            transaction: ctx.Transaction).FirstOrDefault();
+                    return _dbContext.FindRoleById(roleId);
                 });
             }
             else
@@ -66,14 +63,9 @@ namespace AspNet.IdentityStore
             {
                 return Task.Run(() =>
                 {
-                    roleName = roleName.ToUpper();
-                    using (var ctx = _context.Open())
-                        return ctx.Connection.Query<IdentityRole>("SELECT * FROM [dbo].[AspNetRoles] WHERE UPPER([Name]) = @roleName",
-                            param: new { roleName },
-                            transaction: ctx.Transaction).FirstOrDefault();
+                    return _dbContext.FindRoleByName(roleName);
                 });
             }
-            //return this._roleStore.EntitySet.FirstOrDefaultAsync((IdentityRole u) => u.Name.ToUpper() == roleName.ToUpper());
         }
 
         public virtual async Task CreateAsync(IdentityRole role)
@@ -85,21 +77,9 @@ namespace AspNet.IdentityStore
                 throw new ArgumentNullException("role");
             }
 
-            if (string.IsNullOrWhiteSpace(role.Id))
-            {
-                role.Id = Guid.NewGuid().ToString("D");
-            }
-
             await Task.Run(() =>
             {
-                using (var ctx = _context.BeginTransaction())
-                {
-                    ctx.Connection.Execute(@"INSERT INTO [dbo].[AspNetRoles]([Id],[Name]) VALUES(@Id,@Name)",
-                        param: role,
-                        transaction: ctx.Transaction);
-
-                    ctx.Commit();
-                }
+                _dbContext.InsertOrUpdate(role);
             });
         }
 
@@ -113,14 +93,7 @@ namespace AspNet.IdentityStore
 
             await Task.Run(() =>
             {
-                using (var ctx = _context.BeginTransaction())
-                {
-                    ctx.Connection.Execute(@"DELETE FROM [dbo].[AspNetRoles] WHERE [Id] = @Id",
-                        param: new { role.Id },
-                        transaction: ctx.Transaction);
-
-                    ctx.Commit();
-                }
+                _dbContext.Delete(role);
             });
         }
 
@@ -134,14 +107,7 @@ namespace AspNet.IdentityStore
 
             await Task.Run(() =>
             {
-                using (var ctx = _context.BeginTransaction())
-                {
-                    ctx.Connection.Execute(@"UPDATE [dbo].[AspNetRoles] SET [Name] = @Name WHERE [Id] = @Id", 
-                        param: role,
-                        transaction: ctx.Transaction);
-
-                    ctx.Commit();
-                }
+                _dbContext.InsertOrUpdate(role);
             });
         }
 		
@@ -161,12 +127,12 @@ namespace AspNet.IdentityStore
 		
         protected virtual void Dispose(bool disposing)
 		{
-			if (this.DisposeContext && disposing && this._context != null)
+			if (this.DisposeContext && disposing && this._dbContext != null)
 			{
-                _context.Dispose();
+                _dbContext.Dispose();
 			}
 			_disposed = true;
-            _context = null;
+            _dbContext = null;
 		}
 	}
 }

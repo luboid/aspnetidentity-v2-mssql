@@ -28,19 +28,13 @@ namespace AspNet.IdentityStore
         IDisposable
     {
         bool _disposed;
-        IDbContext _context;
+        IDbContext _dbContext;
 
         public bool DisposeContext
         {
             get;
             set;
         }
-
-        //public bool AutoSaveChanges
-        //{
-        //    get;
-        //    set;
-        //}
 
         //public IQueryable<IdentityUser> Users
         //{
@@ -50,38 +44,45 @@ namespace AspNet.IdentityStore
         //    }
         //}
 
-        public UserStore(IDbContext context)
+        public UserStore(IDbContext dbContext)
         {
-            if (context == null)
+            if (dbContext == null)
             {
                 throw new ArgumentNullException("context");
             }
-            _context = context;
-            //AutoSaveChanges = true;
+            _dbContext = dbContext;
         }
 
         public Task<DateTimeOffset> GetLockoutEndDateAsync(IdentityUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
             {
                 throw new ArgumentNullException("user");
             }
             return Task.FromResult<DateTimeOffset>(user.LockoutEndDateUtc.HasValue ? new DateTimeOffset(DateTime.SpecifyKind(user.LockoutEndDateUtc.Value, DateTimeKind.Utc)) : default(DateTimeOffset));
         }
+
         public Task SetLockoutEndDateAsync(IdentityUser user, DateTimeOffset lockoutEnd)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
             {
                 throw new ArgumentNullException("user");
             }
-            user.LockoutEndDateUtc = ((lockoutEnd == DateTimeOffset.MinValue) ? null : new DateTime?(lockoutEnd.UtcDateTime));
+
+            user.LockoutEndDateUtc =
+                ((lockoutEnd == DateTimeOffset.MinValue) ? null : new DateTime?(lockoutEnd.UtcDateTime));
+
+            //_dbContext.UpdateProperty(user, () => user.LockoutEndDateUtc, 
+            //    ((lockoutEnd == DateTimeOffset.MinValue) ? null : new DateTime?(lockoutEnd.UtcDateTime)));
+
             return Task.FromResult<int>(0);
         }
+
         public Task<int> IncrementAccessFailedCountAsync(IdentityUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
             {
                 throw new ArgumentNullException("user");
@@ -89,9 +90,10 @@ namespace AspNet.IdentityStore
             user.AccessFailedCount++;
             return Task.FromResult<int>(user.AccessFailedCount);
         }
+
         public Task ResetAccessFailedCountAsync(IdentityUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
             {
                 throw new ArgumentNullException("user");
@@ -102,7 +104,7 @@ namespace AspNet.IdentityStore
 
         public Task<int> GetAccessFailedCountAsync(IdentityUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
             {
                 throw new ArgumentNullException("user");
@@ -112,7 +114,7 @@ namespace AspNet.IdentityStore
 
         public Task<bool> GetLockoutEnabledAsync(IdentityUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
             {
                 throw new ArgumentNullException("user");
@@ -122,12 +124,16 @@ namespace AspNet.IdentityStore
 
         public Task SetLockoutEnabledAsync(IdentityUser user, bool enabled)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
             {
                 throw new ArgumentNullException("user");
             }
+
             user.LockoutEnabled = enabled;
+
+            //_dbContext.UpdateProperty(user, () => user.LockoutEnabled, enabled);
+
             return Task.FromResult<int>(0);
         }
 
@@ -139,11 +145,10 @@ namespace AspNet.IdentityStore
                 throw new ArgumentNullException("user");
             }
 
-            IList<Claim> result = (
-                from c in user.Claims
-                select new Claim(c.ClaimType, c.ClaimValue)).ToList<Claim>();
-
-            return Task.FromResult<IList<Claim>>(result);
+            return Task.Run(() =>
+            {
+                return _dbContext.GetClaims(user);
+            });
         }
 
         public virtual Task AddClaimAsync(IdentityUser user, Claim claim)
@@ -158,9 +163,10 @@ namespace AspNet.IdentityStore
                 throw new ArgumentNullException("claim");
             }
 
-            user.Claims.Add(new IdentityUserClaim { UserId = user.Id, ClaimType = claim.Type, ClaimValue = claim.Value });
-
-            return Task.FromResult<int>(0);
+            return Task.Run(() =>
+            {
+                _dbContext.AddClaim(user, claim);
+            });
         }
 
         public virtual Task RemoveClaimAsync(IdentityUser user, Claim claim)
@@ -175,27 +181,9 @@ namespace AspNet.IdentityStore
                 throw new ArgumentNullException("claim");
             }
 
-            List<IdentityUserClaim> list = (
-                from uc in user.Claims
-                where uc.ClaimValue == claim.Value && uc.ClaimType == claim.Type
-                select uc).ToList<IdentityUserClaim>();
-
-            foreach (IdentityUserClaim current in list)
-            {
-                user.Claims.Remove(current);
-            }
-
             return Task.Run(() =>
             {
-                using (var ctx = _context.BeginTransaction())
-                {
-                    ctx.Connection.Execute(
-                        sql: @"DELETE FROM [dbo].[AspNetUserClaims] WHERE [Id] IN @Ids",
-                        param: new { Ids = list.Select(i => i.Id).ToArray() },
-                        transaction: ctx.Transaction);
-
-                    ctx.Commit();
-                }
+                _dbContext.RemoveClaim(user, claim);
             });
         }
 
@@ -216,7 +204,11 @@ namespace AspNet.IdentityStore
             {
                 throw new ArgumentNullException("user");
             }
+
             user.EmailConfirmed = confirmed;
+            
+            //_dbContext.UpdateProperty(user, () => user.EmailConfirmed, confirmed);
+
             return Task.FromResult<int>(0);
         }
 
@@ -227,7 +219,11 @@ namespace AspNet.IdentityStore
             {
                 throw new ArgumentNullException("user");
             }
+
             user.Email = email;
+
+            //_dbContext.UpdateProperty(user, () => user.Email, email);
+
             return Task.FromResult<int>(0);
         }
 
@@ -244,22 +240,31 @@ namespace AspNet.IdentityStore
         public Task<IdentityUser> FindByEmailAsync(string email)
         {
             ThrowIfDisposed();
-            return GetIdentityUserByEmailAsync(email);
+            return Task.Run(() =>
+            {
+                return _dbContext.GetUserByEmail(email);
+            });
         }
 
         public virtual Task<IdentityUser> FindByIdAsync(string userId)
         {
             ThrowIfDisposed();
-            return GetIdentityUserAsync(userId);
+            return Task.Run(() =>
+            {
+                return _dbContext.GetUserById(userId);
+            });
         }
 
         public virtual Task<IdentityUser> FindByNameAsync(string userName)
         {
             ThrowIfDisposed();
-            return GetIdentityUserByUserNameAsync(userName);
+            return Task.Run(() =>
+            {
+                return _dbContext.GetUserByUserName(userName);
+            });
         }
 
-        public virtual async Task CreateAsync(IdentityUser user)
+        public virtual Task CreateAsync(IdentityUser user)
         {
             ThrowIfDisposed();
             if (user == null)
@@ -267,21 +272,13 @@ namespace AspNet.IdentityStore
                 throw new ArgumentNullException("user");
             }
 
-            await CreateOrUpdateIdentityUserAsync(user);
-        }
-
-        public virtual async Task DeleteAsync(IdentityUser user)
-        {
-            ThrowIfDisposed();
-            if (user == null)
+            return Task.Run(() =>
             {
-                throw new ArgumentNullException("user");
-            }
-            
-            await DeleteIdentityUser(user);
+                _dbContext.InsertOrUpdate(user);
+            });
         }
 
-        public virtual async Task UpdateAsync(IdentityUser user)
+        public virtual Task DeleteAsync(IdentityUser user)
         {
             ThrowIfDisposed();
             if (user == null)
@@ -289,25 +286,39 @@ namespace AspNet.IdentityStore
                 throw new ArgumentNullException("user");
             }
 
-            await CreateOrUpdateIdentityUserAsync(user);
+            return Task.Run(() =>
+            {
+                _dbContext.Delete(user);
+            });
         }
 
-        public void Dispose()
+        public virtual Task UpdateAsync(IdentityUser user)
         {
-            Dispose(true);
-            GC.SuppressFinalize(this);
+            ThrowIfDisposed();
+            if (user == null)
+            {
+                throw new ArgumentNullException("user");
+            }
+
+            return Task.Run(() =>
+            {
+                _dbContext.InsertOrUpdate(user);
+            });
         }
 
-        public virtual async Task<IdentityUser> FindAsync(UserLoginInfo login)
-		{
-			ThrowIfDisposed();
-			if (login == null)
-			{
-				throw new ArgumentNullException("login");
-			}
+        public virtual Task<IdentityUser> FindAsync(UserLoginInfo login)
+        {
+            ThrowIfDisposed();
+            if (login == null)
+            {
+                throw new ArgumentNullException("login");
+            }
 
-			return await GetIdentityUserByLoginInfoAsync(login);
-		}
+            return Task.Run(() =>
+            {
+                return _dbContext.GetUserByLoginInfo(login);
+            });
+        }
 
         public virtual Task AddLoginAsync(IdentityUser user, UserLoginInfo login)
         {
@@ -321,19 +332,10 @@ namespace AspNet.IdentityStore
                 throw new ArgumentNullException("login");
             }
 
-            string provider = login.LoginProvider;
-            string key = login.ProviderKey;
-            if (!user.Logins.Any(l => l.ProviderKey == key && l.LoginProvider == provider))
+            return Task.Run(() =>
             {
-                user.Logins.Add(new IdentityUserLogin
-                {
-                    UserId = user.Id,
-                    ProviderKey = key,
-                    LoginProvider = provider
-                });
-            }
-
-            return Task.FromResult<int>(0);
+                _dbContext.AddLogin(user, login);
+            });
         }
 
         public virtual Task RemoveLoginAsync(IdentityUser user, UserLoginInfo login)
@@ -347,14 +349,11 @@ namespace AspNet.IdentityStore
             {
                 throw new ArgumentNullException("login");
             }
-            string provider = login.LoginProvider;
-            string key = login.ProviderKey;
-            var identityUserLogin = user.Logins.SingleOrDefault(l => l.LoginProvider == provider && l.ProviderKey == key);
-            if (identityUserLogin != null)
+
+            return Task.Run(() =>
             {
-                user.Logins.Remove(identityUserLogin);
-            }
-            return Task.FromResult<int>(0);
+                _dbContext.RemoveLogin(user, login);
+            });
         }
 
         public virtual Task<IList<UserLoginInfo>> GetLoginsAsync(IdentityUser user)
@@ -364,10 +363,11 @@ namespace AspNet.IdentityStore
             {
                 throw new ArgumentNullException("user");
             }
-            IList<UserLoginInfo> result = (
-                from l in user.Logins
-                select new UserLoginInfo(l.LoginProvider, l.ProviderKey)).ToList<UserLoginInfo>();
-            return Task.FromResult<IList<UserLoginInfo>>(result);
+
+            return Task.Run(() =>
+            {
+                return _dbContext.GetLogins(user);
+            });
         }
 
         public Task SetPasswordHashAsync(IdentityUser user, string passwordHash)
@@ -377,7 +377,11 @@ namespace AspNet.IdentityStore
             {
                 throw new ArgumentNullException("user");
             }
+
             user.PasswordHash = passwordHash;
+            
+            //_dbContext.UpdateProperty(user, () => user.PasswordHash, passwordHash);
+
             return Task.FromResult<int>(0);
         }
 
@@ -403,7 +407,11 @@ namespace AspNet.IdentityStore
             {
                 throw new ArgumentNullException("user");
             }
+
             user.PhoneNumber = phoneNumber;
+            
+            //_dbContext.UpdateProperty(user, () => user.PhoneNumber, phoneNumber);
+
             return Task.FromResult<int>(0);
         }
 
@@ -434,7 +442,11 @@ namespace AspNet.IdentityStore
             {
                 throw new ArgumentNullException("user");
             }
+
             user.PhoneNumberConfirmed = confirmed;
+            
+            //_dbContext.UpdateProperty(user, () => user.PhoneNumberConfirmed, confirmed);
+
             return Task.FromResult<int>(0);
         }
 
@@ -446,41 +458,16 @@ namespace AspNet.IdentityStore
                 throw new ArgumentNullException("user");
             }
 
-            IdentityRole identityRole = await GetRoleByName(roleName);
-            if (identityRole == null)
+            IdentityRole role = await _dbContext.GetRoleByName(roleName);
+            if (role == null)
             {
                 throw new InvalidOperationException(string.Format(CultureInfo.CurrentCulture, Resources.RoleNotFound, roleName));
             }
 
-            if (!user.Roles.Any(r => r.RoleId == identityRole.Id))
+            await Task.Run(() =>
             {
-                user.Roles.Add(new IdentityUserRole
-                {
-                    UserId = user.Id,
-                    RoleId = identityRole.Id
-                });
-            }
-        }
-
-        Task<IdentityRole> GetRoleByName(string roleName)
-        {
-            if (string.IsNullOrWhiteSpace(roleName))
-            {
-                //throw new ArgumentException(Resources.ValueCannotBeNullOrEmpty, "roleName");
-                return Task.FromResult<IdentityRole>(null);
-            }
-            else
-            {
-                return Task.Run(() =>
-                {
-                    roleName = roleName.ToUpper();
-                    using (var ctx = _context.Open())
-                        return ctx.Connection.Query<IdentityRole>(
-                            sql: @"SELECT [Id], [Name] FROM [dbo].[AspNetRoles] WHERE UPPER([Name]) = @roleName",
-                            param: new { roleName },
-                            transaction: ctx.Transaction).FirstOrDefault();
-                });
-            }
+                _dbContext.AddRole(user, role);
+            });
         }
 
         public virtual async Task RemoveFromRoleAsync(IdentityUser user, string roleName)
@@ -491,14 +478,13 @@ namespace AspNet.IdentityStore
                 throw new ArgumentNullException("user");
             }
 
-            IdentityRole identityRole = await GetRoleByName(roleName);
-            if (null != identityRole)
+            IdentityRole role = await _dbContext.GetRoleByName(roleName);
+            if (null != role)
             {
-                var identityUserRole = user.Roles.FirstOrDefault(r => r.RoleId == identityRole.Id);
-                if (null != identityUserRole)
+                await Task.Run(() =>
                 {
-                    user.Roles.Remove(identityUserRole);
-                }
+                    _dbContext.RemoveRole(user, role);
+                });
             }
         }
 
@@ -512,11 +498,7 @@ namespace AspNet.IdentityStore
 
             return Task.Run(() =>
             {
-                using (var ctx = _context.Open())
-                    return ctx.Connection.Query<string>(
-                            sql: @"SELECT [Name] FROM [dbo].[AspNetRoles] WHERE [Id] IN @Ids",
-                            param: new { Ids = user.Roles.Select(i => i.RoleId).ToArray() },
-                            transaction: ctx.Transaction).ToList<string>() as IList<string>;
+                return _dbContext.GetRoles(user);
             });
         }
 
@@ -533,16 +515,10 @@ namespace AspNet.IdentityStore
                 throw new ArgumentException(Resources.ValueCannotBeNullOrEmpty, "roleName");
             }
 
-            roleName = await Task.Run(() =>
+            return await Task.Run(() =>
             {
-                using (var ctx = _context.Open())
-                    return ctx.Connection.Query<string>(
-                            sql: @"SELECT [Name] FROM [dbo].[AspNetRoles] WHERE [Id] IN @Ids AND UPPER([Name]) = @Name",
-                            param: new { Ids = user.Roles.Select(i => i.RoleId).ToArray(), roleName = roleName.ToUpper() },
-                            transaction: ctx.Transaction).FirstOrDefault();
+                return _dbContext.IsInRole(user, roleName);
             });
-
-            return !string.IsNullOrWhiteSpace(roleName);
         }
 
         public Task SetSecurityStampAsync(IdentityUser user, string stamp)
@@ -552,7 +528,11 @@ namespace AspNet.IdentityStore
             {
                 throw new ArgumentNullException("user");
             }
+
             user.SecurityStamp = stamp;
+
+            //_dbContext.UpdateProperty(user, () => user.SecurityStamp, stamp);
+
             return Task.FromResult<int>(0);
         }
 
@@ -573,7 +553,11 @@ namespace AspNet.IdentityStore
             {
                 throw new ArgumentNullException("user");
             }
+
             user.TwoFactorEnabled = enabled;
+
+            //_dbContext.UpdateProperty(user, () => user.TwoFactorEnabled, enabled);
+
             return Task.FromResult<int>(0);
         }
 
@@ -587,362 +571,6 @@ namespace AspNet.IdentityStore
             return Task.FromResult<bool>(user.TwoFactorEnabled);
         }
 
-        Task<IdentityUser> GetIdentityUserByLoginInfoAsync(UserLoginInfo login)
-        {
-            if (null == login || string.IsNullOrWhiteSpace(login.LoginProvider) || string.IsNullOrWhiteSpace(login.ProviderKey))
-            {
-                return Task.FromResult<IdentityUser>(null);
-            }
-            else
-            {
-                return Task.Run(() =>
-                {
-                    using (var ctx = _context.Open())
-                    {
-                        string id = ctx.Connection.Query<string>(sql: @"SELECT [UserId] FROM [dbo].[AspNetUserLogins] WHERE [LoginProvider] = @LoginProvider AND [ProviderKey] = @ProviderKey",
-                            param: login,
-                            transaction: ctx.Transaction).SingleOrDefault();
-
-                        return GetIdentityUserAsync(ctx, id);
-                    }
-                });
-            }
-        }
-
-        Task<IdentityUser> GetIdentityUserByEmailAsync(string email)
-        {
-            if (string.IsNullOrWhiteSpace(email))
-            {
-                return Task.FromResult<IdentityUser>(null);
-            }
-            else
-            {
-                return Task.Run(() =>
-                {
-                    using (var ctx = _context.Open())
-                    {
-                        var id = ctx.Connection.Query<string>(sql: @"SELECT [Id] FROM [dbo].[AspNetUsers] WHERE [Email] = LOWER(@email)",
-                            param: new { email },
-                            transaction: ctx.Transaction).SingleOrDefault();
-
-                        return GetIdentityUserAsync(ctx, id);
-                    }
-                });
-            }
-        }
-
-        Task<IdentityUser> GetIdentityUserByUserNameAsync(string userName)
-        {
-            if (string.IsNullOrWhiteSpace(userName))
-            {
-                return Task.FromResult<IdentityUser>(null);
-            }
-            else
-            {
-                return Task.Run(() =>
-                {
-                    using (var ctx = _context.Open())
-                    {
-                        var id = ctx.Connection.Query<string>(sql: @"SELECT [Id] FROM [dbo].[AspNetUsers] WHERE [UserName] = LOWER(@userName)",
-                            param: new { userName },
-                            transaction: ctx.Transaction).SingleOrDefault();
-
-                        return GetIdentityUserAsync(ctx, id);
-                    }
-                });
-            }
-        }
-
-        Task<IdentityUser> GetIdentityUserAsync(string id)
-        {
-            return Task.Run(() =>
-            {
-                using (var ctx = _context.Open())
-                    return GetIdentityUserAsync(ctx, id);
-            });
-        }
-
-        IdentityUser GetIdentityUserAsync(IDbConnectionContext ctx, string id)
-        {
-            if (string.IsNullOrWhiteSpace(id))
-            {
-                return null;
-            }
-            else
-            {
-                string query = @"
-SELECT [Id]
-      ,[Email]
-      ,[EmailConfirmed]
-      ,[PasswordHash]
-      ,[SecurityStamp]
-      ,[PhoneNumber]
-      ,[PhoneNumberConfirmed]
-      ,[TwoFactorEnabled]
-      ,[LockoutEndDateUtc]
-      ,[LockoutEnabled]
-      ,[AccessFailedCount]
-      ,[UserName]
-  FROM [dbo].[AspNetUsers]
- WHERE [ID] = @ID
-SELECT [UserId]
-      ,[RoleId]
-  FROM [dbo].[AspNetUserRoles]
- WHERE [UserId] = @ID
-SELECT [LoginProvider]
-      ,[ProviderKey]
-      ,[UserId]
-  FROM [dbo].[AspNetUserLogins]
- WHERE [UserId] = @ID
-SELECT [Id]
-      ,[UserId]
-      ,[ClaimType]
-      ,[ClaimValue]
-  FROM [dbo].[AspNetUserClaims]
- WHERE [UserId] = @ID
-";
-
-                using (var multi = ctx.Connection.QueryMultiple(sql: query, param: new { id }, transaction: ctx.Transaction))
-                {
-                    IdentityUser ua = multi.Read<IdentityUser>().SingleOrDefault();
-                    if (null != ua)
-                    {
-                        (ua.Roles as List<IdentityUserRole>).AddRange(multi.Read<IdentityUserRole>());
-                        (ua.Logins as List<IdentityUserLogin>).AddRange(multi.Read<IdentityUserLogin>());
-                        (ua.Claims as List<IdentityUserClaim>).AddRange(multi.Read<IdentityUserClaim>());
-                    }
-                    return ua;
-                }
-            }
-        }
-
-        Task<IdentityUser> CreateOrUpdateIdentityUserAsync(IdentityUser user)
-        {
-            using (var ctx = _context.BeginTransaction())
-            {
-                var insert = CreateOrUpdateIdentityUser(ctx, user);
-                CreateOrUpdateIdentityUserRole(ctx, user, insert);
-                CreateOrUpdateIdentityUserLogin(ctx, user, insert);
-                CreateOrUpdateIdentityUserClaim(ctx, user, insert);
-
-                ctx.Commit();
-            }
-            return Task.FromResult(user);
-        }
-
-        Task DeleteIdentityUser(IdentityUser user)
-        {
-            using (var ctx = _context.BeginTransaction())
-            {
-                ctx.Connection.Execute(
-                    sql: @"DELETE FROM [dbo].[AspNetUsers] WHERE [Id] = @Id",
-                    param: new { user.Id },
-                    transaction: ctx.Transaction);
-
-                ctx.Commit();
-            }
-            return Task.FromResult<int>(0);
-        }
-
-        bool CreateOrUpdateIdentityUser(IDbConnectionContext ctx, IdentityUser user)
-        {
-            if (string.IsNullOrWhiteSpace(user.Id))
-            {
-                user.Id = Guid.NewGuid().ToString("D");
-            }
-
-            bool insert = false;
-            int update = ctx.Connection.Execute(sql: @"UPDATE [dbo].[AspNetUsers]
-   SET [Email] = LOWER(@Email)
-      ,[EmailConfirmed] = @EmailConfirmed
-      ,[PasswordHash] = @PasswordHash
-      ,[SecurityStamp] = @SecurityStamp
-      ,[PhoneNumber] = @PhoneNumber
-      ,[PhoneNumberConfirmed] = @PhoneNumberConfirmed
-      ,[TwoFactorEnabled] = @TwoFactorEnabled
-      ,[LockoutEndDateUtc] = @LockoutEndDateUtc
-      ,[LockoutEnabled] = @LockoutEnabled
-      ,[AccessFailedCount] = @AccessFailedCount
-      ,[UserName] = LOWER(@UserName)
- WHERE [Id] = @Id", param: user, transaction: ctx.Transaction);
-            if (0 == update)
-            {
-                insert = true;
-                ctx.Connection.Execute(sql: @"INSERT INTO [dbo].[AspNetUsers]
-           ([Id]
-           ,[Email]
-           ,[EmailConfirmed]
-           ,[PasswordHash]
-           ,[SecurityStamp]
-           ,[PhoneNumber]
-           ,[PhoneNumberConfirmed]
-           ,[TwoFactorEnabled]
-           ,[LockoutEndDateUtc]
-           ,[LockoutEnabled]
-           ,[AccessFailedCount]
-           ,[UserName])
-     VALUES
-           (@Id
-           ,LOWER(@Email)
-           ,@EmailConfirmed
-           ,@PasswordHash
-           ,@SecurityStamp
-           ,@PhoneNumber
-           ,@PhoneNumberConfirmed
-           ,@TwoFactorEnabled
-           ,@LockoutEndDateUtc
-           ,@LockoutEnabled
-           ,@AccessFailedCount
-           ,LOWER(@UserName))", param: user, transaction: ctx.Transaction);
-            }
-            return insert;
-        }
-
-        void CreateOrUpdateIdentityUserClaim(IDbConnectionContext ctx, IdentityUser user, bool insert)
-        {
-            foreach (var claim in user.Claims)
-            {
-                if (string.IsNullOrWhiteSpace(claim.Id))
-                {
-                    claim.Id = Guid.NewGuid().ToString("D");
-                }
-
-                if (string.IsNullOrWhiteSpace(claim.UserId))
-                {
-                    claim.UserId = user.Id;
-                }
-                else
-                {
-                    if (claim.UserId != user.Id)
-                    {
-                        throw new ArgumentException(Resources.InvalidRoleUserID);
-                    }
-                }
-            }
-
-            ICollection<IdentityUserClaim> forDelete = null, forInsert = user.Claims;
-            if (!insert)
-            {
-                var oldClaims = ctx.Connection.Query<IdentityUserClaim>(
-                    sql: @"SELECT [Id],[UserId],[ClaimType],[ClaimValue] FROM [dbo].[AspNetUserClaims] WHERE [UserId] = @Id",
-                    param: new { user.Id },
-                    transaction: ctx.Transaction).ToList();
-
-                forDelete = (from n in oldClaims
-                             where !user.Claims.Any(o => o.ClaimType == n.ClaimType && o.ClaimValue == n.ClaimValue)
-                             select n).ToList();
-
-                forInsert = (from n in user.Claims
-                             where !oldClaims.Any(o => o.ClaimType == n.ClaimType && o.ClaimValue == n.ClaimValue)
-                             select n).ToList();
-            }
-
-            if (null != forDelete)
-            {
-                ctx.Connection.Execute(
-                    sql: @"DELETE FROM [dbo].[AspNetUserClaims] WHERE [Id] IN @Ids",
-                    param: new { Ids = forDelete.Select(c => c.Id).ToArray() },
-                    transaction: ctx.Transaction);
-            }
-
-            ctx.Connection.Execute(sql: @"INSERT INTO [dbo].[AspNetUserClaims]([Id],[UserId],[ClaimType],[ClaimValue])
-     VALUES(@Id,@UserId,@ClaimType,@ClaimValue)", param: forInsert, transaction: ctx.Transaction);  
-        }
-        
-        void CreateOrUpdateIdentityUserLogin(IDbConnectionContext ctx, IdentityUser user, bool insert)
-        {
-            //check user ids
-            foreach (var login in user.Logins)
-            {
-                if (string.IsNullOrWhiteSpace(login.UserId))
-                {
-                    login.UserId = user.Id;
-                }
-                else
-                {
-                    if (login.UserId != user.Id)
-                    {
-                        throw new ArgumentException(Resources.InvalidRoleUserID);
-                    }
-                }
-            }
-
-            ICollection<IdentityUserLogin> forDelete = null, forInsert = user.Logins;
-            if (!insert)
-            {
-                var oldLogins = ctx.Connection.Query<IdentityUserLogin>(
-                    sql: @"SELECT [LoginProvider],[ProviderKey],[UserId] FROM [dbo].[AspNetUserLogins] WHERE [UserId] = @Id",
-                    param: new { user.Id },
-                    transaction: ctx.Transaction).ToList();
-
-                forDelete = (from n in oldLogins
-                             where !user.Logins.Any(o => o.LoginProvider == n.LoginProvider && o.ProviderKey == n.ProviderKey)
-                             select n).ToList();
-
-                forInsert = (from n in user.Logins
-                             where !oldLogins.Any(o => o.LoginProvider == n.LoginProvider && o.ProviderKey == n.ProviderKey)
-                             select n).ToList();
-            }
-
-            if (null != forDelete)
-            {
-                ctx.Connection.Execute(
-                    sql: @"DELETE FROM [dbo].[AspNetUserLogins] WHERE [LoginProvider] = @LoginProvider AND [ProviderKey] = @ProviderKey AND [UserId] = @UserId",
-                    param: forDelete,
-                    transaction: ctx.Transaction);
-            }
-
-            ctx.Connection.Execute(sql: @"INSERT INTO [dbo].[AspNetUserLogins]([LoginProvider],[ProviderKey],[UserId])
-     VALUES(@LoginProvider,@ProviderKey,@UserId)", param: forInsert, transaction: ctx.Transaction);  
-        }
-
-        void CreateOrUpdateIdentityUserRole(IDbConnectionContext ctx, IdentityUser user, bool insert)
-        {
-            //check user ids
-            foreach (var role in user.Roles)
-            {
-                if (string.IsNullOrWhiteSpace(role.UserId))
-                {
-                    role.UserId = user.Id;
-                }
-                else
-                {
-                    if (role.UserId != user.Id)
-                    {
-                        throw new ArgumentException(Resources.InvalidRoleUserID);
-                    }
-                }
-            }
-
-            ICollection<IdentityUserRole> forDelete = null, forInsert = user.Roles;
-            if (!insert)
-            {
-                var oldRoles = ctx.Connection.Query<IdentityUserRole>(
-                    sql: @"SELECT [UserId],[RoleId] FROM [dbo].[AspNetUserRoles] WHERE [UserId] = @Id",
-                    param: new { user.Id },
-                    transaction: ctx.Transaction).ToList();
-
-                forDelete = (from n in oldRoles
-                             where !user.Roles.Any(o => o.UserId == n.UserId && o.RoleId == n.RoleId)
-                             select n).ToList();
-
-                forInsert = (from n in user.Roles
-                             where !oldRoles.Any(o => o.UserId == n.UserId && o.RoleId == n.RoleId)
-                             select n).ToList();
-            }
-
-            if (null != forDelete)
-            {
-                ctx.Connection.Execute(
-                    sql: @"DELETE FROM [dbo].[AspNetUserRoles] WHERE [UserId] = @UserId AND [RoleId] = @RoleId",
-                    param: forDelete,
-                    transaction: ctx.Transaction);
-            }
-
-            ctx.Connection.Execute(sql: @"INSERT INTO [dbo].[AspNetUserRoles]([UserId],[RoleId])
-     VALUES(@UserId,@RoleId)", param: forInsert, transaction: ctx.Transaction);        
-        }
-
         void ThrowIfDisposed()
         {
             if (_disposed)
@@ -953,12 +581,18 @@ SELECT [Id]
 
         protected virtual void Dispose(bool disposing)
         {
-            if (DisposeContext && disposing && _context != null)
+            if (DisposeContext && disposing && _dbContext != null)
             {
-                _context.Dispose();
+                _dbContext.Dispose();
             }
             _disposed = true;
-            _context = null;
+            _dbContext = null;
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
         }
     }
 }
