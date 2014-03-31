@@ -25,8 +25,8 @@ namespace IdentitySample.Controllers
         public UsersAdminController(IUserManagerService userManagerService,
             IRoleManagerService roleManagerService)
         {
-            _userManager = userManagerService.Instance;
-            _roleManager = roleManagerService.Instance;
+            _userManager = userManagerService.CreateInstance();
+            _roleManager = roleManagerService.CreateInstance();
         }
 
         public ApplicationUserManager UserManager

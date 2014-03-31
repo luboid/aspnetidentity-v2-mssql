@@ -21,7 +21,7 @@ namespace IdentitySample.Controllers
 
         public ManageController(IUserManagerService userManagerService)
         {
-            _userManager = userManagerService.Instance;
+            _userManager = userManagerService.CreateInstance();
         }
 
         public ApplicationUserManager UserManager

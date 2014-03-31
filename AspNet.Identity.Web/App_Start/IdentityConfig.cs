@@ -21,17 +21,14 @@ namespace IdentitySample.Models
 
     public interface IUserManagerService
     {
-        ApplicationUserManager Instance { get; }
+        ApplicationUserManager CreateInstance();
     }
 
     public class UserManagerService : IUserManagerService
     {
-        public ApplicationUserManager Instance
+        public ApplicationUserManager CreateInstance()
         {
-            get
-            {
-                return HttpContext.Current.GetOwinContext().GetUserManager<ApplicationUserManager>();
-            }
+            return HttpContext.Current.GetOwinContext().GetUserManager<ApplicationUserManager>();
         }
     }
 
@@ -149,17 +146,14 @@ namespace IdentitySample.Models
 
     public interface IRoleManagerService
     {
-        ApplicationRoleManager Instance { get; }
+        ApplicationRoleManager CreateInstance();
     }
 
     public class RoleManagerService : IRoleManagerService
     {
-        public ApplicationRoleManager Instance
+        public ApplicationRoleManager CreateInstance()
         {
-            get
-            {
-                return HttpContext.Current.GetOwinContext().Get<ApplicationRoleManager>();
-            }
+            return HttpContext.Current.GetOwinContext().Get<ApplicationRoleManager>();
         }
     }
 
