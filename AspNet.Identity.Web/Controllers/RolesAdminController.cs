@@ -14,40 +14,33 @@ namespace IdentitySample.Controllers
     [Authorize(Roles = "Admin")]
     public class RolesAdminController : Controller
     {
+        private ApplicationUserManager _userManager;
+        private ApplicationRoleManager _roleManager;
+
         public RolesAdminController()
         {
         }
 
-        public RolesAdminController(ApplicationUserManager userManager,
-            ApplicationRoleManager roleManager)
+        public RolesAdminController(IUserManagerService userManagerService,
+            IRoleManagerService roleManagerService)
         {
-            UserManager = userManager;
-            RoleManager = roleManager;
+            _userManager = userManagerService.Instance;
+            _roleManager = roleManagerService.Instance;
         }
 
-        private ApplicationUserManager _userManager;
         public ApplicationUserManager UserManager
         {
             get
             {
-                return _userManager ?? HttpContext.GetOwinContext().GetUserManager<ApplicationUserManager>();
-            }
-            set
-            {
-                _userManager = value;
+                return _userManager;
             }
         }
 
-        private ApplicationRoleManager _roleManager;
         public ApplicationRoleManager RoleManager
         {
             get
             {
-                return _roleManager ?? HttpContext.GetOwinContext().Get<ApplicationRoleManager>();
-            }
-            private set
-            {
-                _roleManager = value;
+                return _roleManager;
             }
         }
 

@@ -19,6 +19,22 @@ namespace IdentitySample.Models
 {
     // Configure the application user manager used in this application. UserManager is defined in ASP.NET Identity and is used by the application.
 
+    public interface IUserManagerService
+    {
+        ApplicationUserManager Instance { get; }
+    }
+
+    public class UserManagerService : IUserManagerService
+    {
+        public ApplicationUserManager Instance
+        {
+            get
+            {
+                return HttpContext.Current.GetOwinContext().GetUserManager<ApplicationUserManager>();
+            }
+        }
+    }
+
     public class ApplicationUserManager : UserManager<IdentityUser>
     {
         public ApplicationUserManager(IUserStore<IdentityUser> store)
@@ -46,23 +62,28 @@ namespace IdentitySample.Models
                 RequireLowercase = true,
                 RequireUppercase = true,
             };
+
             // Configure user lockout defaults
             manager.UserLockoutEnabledByDefault = true;
             manager.DefaultAccountLockoutTimeSpan = TimeSpan.FromMinutes(5);
             manager.MaxFailedAccessAttemptsBeforeLockout = 5;
+            
             // Register two factor authentication providers. This application uses Phone and Emails as a step of receiving a code for verifying the user
             // You can write your own provider and plug in here.
             manager.RegisterTwoFactorProvider("PhoneCode", new PhoneNumberTokenProvider<IdentityUser>
             {
                 MessageFormat = "Your security code is: {0}"
             });
+            
             manager.RegisterTwoFactorProvider("EmailCode", new EmailTokenProvider<IdentityUser>
             {
                 Subject = "SecurityCode",
                 BodyFormat = "Your security code is {0}"
             });
+            
             manager.EmailService = new EmailService();
             manager.SmsService = new SmsService();
+            
             var dataProtectionProvider = options.DataProtectionProvider;
             if (dataProtectionProvider != null)
             {
@@ -126,6 +147,22 @@ namespace IdentitySample.Models
         }
     }
 
+    public interface IRoleManagerService
+    {
+        ApplicationRoleManager Instance { get; }
+    }
+
+    public class RoleManagerService : IRoleManagerService
+    {
+        public ApplicationRoleManager Instance
+        {
+            get
+            {
+                return HttpContext.Current.GetOwinContext().Get<ApplicationRoleManager>();
+            }
+        }
+    }
+
     // Configure the RoleManager used in the application. RoleManager is defined in the ASP.NET Identity core assembly
     public class ApplicationRoleManager : RoleManager<IdentityRole>
     {
@@ -148,32 +185,29 @@ namespace IdentitySample.Models
         static readonly SmtpSection section = WebConfigurationManager.GetSection("system.net/mailSettings/smtp") as SmtpSection;
         static readonly MailAddress from = new MailAddress(section.From);
 
-        public Task SendAsync(IdentityMessage message)
+        public async Task SendAsync(IdentityMessage message)
         {
-            return Task.Run(() =>
+            var m = new MailMessage
             {
-                var m = new MailMessage
-                {
-                    From = from,
-                    Subject = message.Subject,
-                    Body = message.Body
-                };
+                From = from,
+                Subject = message.Subject,
+                Body = message.Body,
+                IsBodyHtml = true
+            };
 
-                m.To.Add(message.Destination);
+            m.To.Add(message.Destination);
 
-                try
-                {
-                    using (var c = new SmtpClient())
-                        c.Send(m);
-                }
-                catch (Exception ex)
-                {
-                    Trace.TraceError(ex.ToString());
-                }
-            });
-
+            try
+            {
+                using (var c = new SmtpClient())
+                    await c.SendMailAsync(m);
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceError(ex.ToString());
+            }
             // Plug in your email service here to send an email.
-            //Task.FromResult(0);
+            //return Task.FromResult<int>(0);
         }
     }
 

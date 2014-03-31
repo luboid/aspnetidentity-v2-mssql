@@ -13,25 +13,22 @@ namespace IdentitySample.Controllers
     [Authorize]
     public class ManageController : Controller
     {
+        private ApplicationUserManager _userManager;
+
         public ManageController()
         {
         }
 
-        public ManageController(ApplicationUserManager userManager)
+        public ManageController(IUserManagerService userManagerService)
         {
-            UserManager = userManager;
+            _userManager = userManagerService.Instance;
         }
 
-        private ApplicationUserManager _userManager;
         public ApplicationUserManager UserManager
         {
             get
             {
-                return _userManager ?? HttpContext.GetOwinContext().GetUserManager<ApplicationUserManager>();
-            }
-            private set
-            {
-                _userManager = value;
+                return _userManager;
             }
         }
 

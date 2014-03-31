@@ -69,6 +69,8 @@ namespace AspNet.Identity.Web.App_Start
             kernel.Bind<IRoleStore<IdentityRole, string>>().To<RoleStore>().InRequestScope();
             kernel.Bind<ApplicationUserManager>().ToSelf();
             kernel.Bind<ApplicationRoleManager>().ToSelf();
+            kernel.Bind<IUserManagerService>().To<UserManagerService>().InSingletonScope();
+            kernel.Bind<IRoleManagerService>().To<RoleManagerService>().InSingletonScope();
         }        
     }
 }

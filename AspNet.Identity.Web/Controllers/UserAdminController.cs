@@ -15,39 +15,33 @@ namespace IdentitySample.Controllers
     [Authorize(Roles = "Admin")]
     public class UsersAdminController : Controller
     {
+        private ApplicationUserManager _userManager;
+        private ApplicationRoleManager _roleManager;
+        
         public UsersAdminController()
         {
         }
 
-        public UsersAdminController(ApplicationUserManager userManager, ApplicationRoleManager roleManager)
+        public UsersAdminController(IUserManagerService userManagerService,
+            IRoleManagerService roleManagerService)
         {
-            UserManager = userManager;
-            RoleManager = roleManager;
+            _userManager = userManagerService.Instance;
+            _roleManager = roleManagerService.Instance;
         }
 
-        private ApplicationUserManager _userManager;
         public ApplicationUserManager UserManager
         {
             get
             {
-                return _userManager ?? HttpContext.GetOwinContext().GetUserManager<ApplicationUserManager>();
-            }
-            private set
-            {
-                _userManager = value;
+                return _userManager;
             }
         }
 
-        private ApplicationRoleManager _roleManager;
         public ApplicationRoleManager RoleManager
         {
             get
             {
-                return _roleManager ?? HttpContext.GetOwinContext().Get<ApplicationRoleManager>();
-            }
-            private set
-            {
-                _roleManager = value;
+                return _roleManager;
             }
         }
 
@@ -58,7 +52,7 @@ namespace IdentitySample.Controllers
             // TODO to be impplemented
             throw new NotImplementedException();
             //return View(await UserManager.Users.ToListAsync());
-            return View();
+            //return View();
         }
 
         //
@@ -84,7 +78,7 @@ namespace IdentitySample.Controllers
             // TODO to be implemented
             // ViewBag.RoleId = new SelectList(await RoleManager.Roles.ToListAsync(), "Name", "Name");
             throw new NotImplementedException();
-            return View();
+            //return View();
         }
 
         //
@@ -109,7 +103,7 @@ namespace IdentitySample.Controllers
                             // TODO to be implemented
                             //ViewBag.RoleId = new SelectList(await RoleManager.Roles.ToListAsync(), "Name", "Name");
                             throw new NotImplementedException();
-                            return View();
+                            //return View();
                         }
                     }
                 }
